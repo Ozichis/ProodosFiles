@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <h1 class="card-title">Welcome, {{ user.username }}!</h1>
+        <p class="card-text">Here are your suggested files and folders:</p>
+        
+        <h2>Suggested Folders</h2>
+        <div class="row">
+            {% if no_folders %}
+            You have no folders
+            {% else %}
+            {% for folder in suggested_folders %}
+            {% for piece in folder.folders %}
+            <div class="col-md-3">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ piece.name }}</h5>
+                        <p class="card-text">Reason: {{ folder.reason }}</p>
+                        <p class="card-text">{% if piece.parent %}In {{ piece.parent.name }}{% else %}In My Files{% endif %}</p>
+                        <a href="{% url 'view_folder' piece.id %}" class="btn btn-primary">Open</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% endfor %}
+            {% endif %}
+        </div>
+        <h2>Suggested Files</h2>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>File Name</th>
+                    <th>Reason</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if no_files %}
+                You have no files
+                {% else %}
+                {% for file in suggested_files %}
+                {% for piece in file.files %}
+                <tr>
+                    <td>{{ piece.name }}</td>
+                    <td>{{ file.reason }}</td>
+                    <td>
+                        <a href="{% url 'preview_file' piece.id %}" class="btn btn-info btn-sm">View</a>
+                        <a href="{% url 'download_file' piece.id %}" class="btn btn-success btn-sm">Download</a>
+                        {% if file.get_extension == 'zip' %}<a href="{% url 'unzip_file' file.id %}" class="btn btn-secondary btn-sm">Unzip</a>{% endif %}
+                    </td>
+                </tr>                
+                {% endfor %}
+                {% endfor %}
+                {% endif %}
+                
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

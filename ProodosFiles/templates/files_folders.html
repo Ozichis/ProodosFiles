@@ -1,0 +1,224 @@
+{% extends 'base.html' %}
+{% load filesizetags %}
+{% load starreditemcheck %}
+{% block title %}My Files and Folders{% endblock %}
+
+{% block content %}
+<style>
+    .modall {
+    display: none;
+    position: fixed;
+    z-index: 1050;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: rgb(0,0,0);
+    background-color: rgba(0,0,0,0.4);
+    padding-top: 60px;
+}
+
+.modal-contentt {
+    background-color: #fefefe;
+    margin: 5% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+}
+</style>
+<div class="card">
+    <div class="card-body">
+        <h1 class="card-title">{% if starred %}Starred Files{% else %}{% if folder %}{{ folder.name }}{% else %}Your Files And Folders{% endif %}{% endif %}</h1>
+
+        <!-- Create Folder and Upload Files -->
+        <div class="mb-3">
+            <form method="post">
+                {% csrf_token %}
+                <div class="input-group">
+                    <input type="text" class="form-control" placeholder="New Folder Name" name="folder_name" required>
+                    <button class="btn btn-primary" type="submit">Create Folder</button>
+                </div>
+            </form>
+        </div>
+        <div class="mb-4">
+            {% if folder %}
+            <a href="{% url 'upload_file' folder.id %}" class="btn btn-primary">Upload Files</a>
+            {% else %}
+            <a href="{% url 'upload_root' %}" class="btn btn-primary">Upload Files</a>
+            {% endif %}
+        </div>
+        <!-- Display Folders -->
+        <h2>Folders</h2>
+        <ul class="list-group mb-4">
+            {% for folder in folders %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>{{ folder.name }}</strong>
+                    {% if not folder.owner == request.user %}<p>(Shared With Me)</p>{% endif %}
+                    <span class="text-muted">(Created: {{ folder.created_at|date:"M d, Y" }})</span>
+                </div>
+                <div>
+                    <a href="{% url 'view_folder' folder.id %}" class="btn btn-info btn-sm">Open</a>
+                    <button class="btn btn-sm btn-outline-primary" data-toggle="modal" data-target="#renameModal" data-item-id="{{ folder.id }}" data-item-name="{{ folder.name }}" data-item-type="folder">Rename</button>
+                    <a href="{% url 'zip_folder' folder.id %}" class="btn btn-info btn-sm">Send to zip</a>
+                    <button class="btn btm-sm btn-outline-primary" onclick="openMoveModal('{{ folder.id }}', 'folder')">Move</button>
+                    <a href="{% url 'share_folder' folder.id %}" class="btn btn-warning btn-sm">Share</a>
+                    {% if folder.owner == request.user %}
+                    <a href="{% url 'star_folder' folder.id %}" class="btn btn-secondary btn-sm">{% if folder.starred %}Unstar{% else %}Star{% endif %}</a>
+                    {% else %}
+                    <a href="{% url 'star_folder' folder.id %}" class="btn btn-secondary btn-sm">{% if folder|starred_item:request %}Unstar{% else %}Star{% endif %}</a>
+                    {% endif %}
+                    <a href="{% url 'bin_folder' folder.id %}" class="btn btn-warning btn-sm">Move To Bin</a>
+                </div>
+            </li>
+            {% empty %}
+            <li class="list-group-item text-center">No folders found.</li>
+            {% endfor %}
+        </ul>
+
+        <!-- Display Files -->
+        <h2>Files</h2>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>File Name</th>
+                    <th>Size</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in files %}
+                <tr>
+                    <td>{{ file.name }}</td>
+                    <td>{{ file.size|human_readable_size }}</td>
+                    <td>
+                        <a href="{% url 'preview_file' file.id %}" class="btn btn-info btn-sm">View</a>
+                        <a href="{% url 'download_file' file.id %}" class="btn btn-success btn-sm">Download</a>
+                        <button class="btn btn-sm btn-outline-primary" data-toggle="modal" data-target="#renameModal" data-item-id="{{ file.id }}" data-item-name="{{ file.name }}" data-item-type="file">Rename</button>
+                        <button class="btn btm-sm btn-outline-primary" onclick="openMoveModal('{{ file.id }}', 'file')">Move</button>
+                        <a href="{% url 'share_file' file.id %}" class="btn btn-warning btn-sm">Share</a>
+                        <a href="{% url 'star_file' file.id %}" class="btn btn-secondary btn-sm">{% if file.starred or file|starred_item:request %}Unstar{% else %}Star{% endif %}</a>
+                        <a href="{% url 'bin_file' file.id %}" class="btn btn-secondary btn-sm">Move To Bin</a>
+                        {% if file.get_extension == 'zip' %}<a href="{% url 'unzip_file' file.id %}" class="btn btn-secondary btn-sm">Unzip</a>{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3" class="text-center">No files found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<div class="modal " id="renameModal" tabindex="-1" role="dialog" aria-labelledby="renameModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="renameModalLabel">Rename Item</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="renameForm" method="post">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="itemName">New Name</label>
+                        <input type="text" class="form-control" id="itemName" name="new_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="overrideItem">Override Existing</label>
+                        <input type="checkbox" id="overrideItem" name="override">
+                    </div>
+                    <input type="hidden" id="itemType" name="item_type">
+                    <input type="hidden" id="itemId" name="item_id">
+
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary">Rename</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="moveModal" class="modall">
+    <div class="modal-contentt">
+        <span class="close" onclick="closeMoveModal()">&times;</span>
+        <h4 id="moveme">Move </h4>
+        <h2>Select Destination Folder</h2>
+        <ul>
+            <li><a href="#" onclick="moveItem('home')">Home</a></li>
+            {% for folder in all_folders %}
+            <li><a href="#" onclick="moveItem('{{ folder.id }}')">{{ folder.name }}</a></li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<script>
+
+    function moveItem(destinationFolderId) {
+        const modal = document.getElementById('moveModal');
+        const itemId = modal.getAttribute('data-item-id');
+        fetch(`{% url 'move_item' '00000000-0000-0000-0000-000000000000' '00000000-0000-0000-0000-000000000000' %}`.replace(`/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000/`, `/${destinationFolderId}/${itemId}/`), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(data.message); // Display success message
+                closeMoveModal();
+            } else {
+                alert('Error: ' + data.message); // Display error message
+            }
+            location.reload();
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    $('#renameModal').on('show.bs.modal', function (event) {
+    var button = $(event.relatedTarget);
+    var itemId = button.data('item-id');
+    var itemName = button.data('item-name');
+    var itemType = button.data('item-type');
+    
+    var modal = $(this);
+    modal.find('.modal-title').text('Rename ' + itemType);
+    modal.find('#itemName').val(itemName);
+    modal.find('#itemId').val(itemId);
+    modal.find('#itemType').val(itemType);
+    modal.find('#renameForm').attr('action', '{% url "rename_item" %}');
+});
+
+$('#renameModal').on('hidden.bs.modal', function () {
+    $('.modal-backdrop').remove(); // Ensure no leftover backdrops
+});
+
+function openMoveModal(itemId, itemType) {
+    var moveModal = document.getElementById('moveModal');
+    moveModal.setAttribute('data-item-id', itemId);
+    moveModal.style.display = 'block';
+    moveModal.setAttribute('data-item-id', itemId);
+    document.getElementById('moveme').innerHTML = 'Move ' + itemType;
+}
+
+function closeMoveModal() {
+    var moveModal = document.getElementById('moveModal');
+    moveModal.style.display = 'none';
+    $('.modal-backdrop').remove(); // Remove any lingering backdrops
+}
+</script>
+
+{% endblock %}

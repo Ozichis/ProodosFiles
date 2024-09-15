@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <h2 class="text-center">Binned Items</h2>
+    <h2 class="text-center">Files and folders will be deleted after 30 days</h2>
+    <div class="row">
+        <div class="col-md-6">
+            <h3>Binned Folders</h3>
+            <ul class="list-group">
+                {% for folder in binned_folders %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>{{ folder.name }}</span>
+                        <div>
+                            <a href="{% url 'bin_folder' folder.id %}" class="btn btn-success btn-sm">Restore</a>
+                            <a href="{% url 'delete_folder' folder.id %}" class="btn btn-danger btn-sm">Delete Permanently</a>
+                        </div>
+                    </li>
+                {% empty %}
+                    <li class="list-group-item">No binned folders.</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="col-md-6">
+            <h3>Binned Files</h3>
+            <ul class="list-group">
+                {% for file in binned_files %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>{{ file.name }}</span>
+                        <div>
+                            <a href="{% url 'bin_file' file.id %}" class="btn btn-success btn-sm">Restore</a>
+                            <a href="{% url 'delete_file' file.id %}" class="btn btn-danger btn-sm">Delete Permanently</a>
+                        </div>
+                    </li>
+                {% empty %}
+                    <li class="list-group-item">No binned files.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

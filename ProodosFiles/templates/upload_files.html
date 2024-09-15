@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Files{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <h1 class="card-title">Upload Files</h1>
+
+        <div class="mb-3">
+            <label for="fileInput" class="form-label">Select files to upload:</label>
+            <input type="file" id="fileInput" class="form-control" multiple>
+        </div>
+
+        <div id="fileList" class="mb-3">
+            <!-- Preview of selected files will be displayed here -->
+        </div>
+        <div>
+            <input type="checkbox" id="override" required>Override
+        </div>
+        <button id="uploadBtn" class="btn btn-primary">Upload</button>
+    </div>
+</div>
+
+<script>
+    document.getElementById('fileInput').addEventListener('change', function() {
+        var fileList = document.getElementById('fileList');
+        fileList.innerHTML = '';
+        for (var i = 0; i < this.files.length; i++) {
+            var file = this.files[i];
+            var listItem = document.createElement('div');
+            listItem.textContent = file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
+            fileList.appendChild(listItem);
+        }
+    });
+
+    document.getElementById('uploadBtn').addEventListener('click', function() {
+        var files = document.getElementById('fileInput').files;
+        if (files.length === 0) {
+            alert('Please select files to upload.');
+            return;
+        }
+
+        var formData = new FormData();
+        for (var i = 0; i < files.length; i++) {
+            formData.append('files[]', files[i]);
+        }
+        formData.set('override', document.querySelector('#override').checked);
+        // console.log(files);
+
+        fetch("{% if folder %}{% url 'upload_file' folder.id %}{% else %}{% url 'upload_root' %}{% endif %}", {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        }).then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  alert('Files uploaded successfully.');
+                  window.location.href = "{% if folder %}{% url 'view_folder' folder.id %}{% else %}{% url 'my_files' %}{% endif %}";
+              } else {
+                  alert(data.message);
+              }
+          }).catch(error => console.error('Error:', error));
+    });
+</script>
+{% endblock %}

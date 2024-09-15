@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+
+{% block title %}Preview File{% endblock %}
+
+{% block content %}
+<style>
+    .file-preview-container {
+    max-width: 90%;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #f5f5f5;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    overflow: auto;
+}
+.file-preview-heading {
+    font-size: 24px;
+    text-align: center;
+    color: #333;
+    margin-bottom: 20px;
+}
+.file-preview-text {
+    white-space: pre-wrap;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 16px;
+    background-color: #fff;
+    padding: 15px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    color: #333;
+    max-height: 600px;
+    overflow: auto;
+}
+.file-preview-media {
+    display: block;
+    width: 100%;
+    max-height: 500px;
+    margin: 0 auto;
+    border-radius: 8px;
+}
+</style>
+<h1>Preview File: {{ file.name }}</h1>
+
+{% if file_type == 'image' %}
+    <img src="{{file_url}}" class="img-fluid" alt="{{ file.name }}" width="500px" height="500px">
+
+{% elif file_type == "document" %}
+    <iframe src="{{file_url}}" width="100%" height="600px"></iframe>
+{% elif file_type == "office" %}
+<div class="document-preview-container" style="max-width: 100%; width: 100%; height: 600px; overflow-y: auto; margin: auto; background-color: white;">
+    <div class="document-content" style="padding: 20px; padding-right: 20px; max-width: 100%; width: 100%;">
+        {{ content|safe }}
+    </div>
+</div>
+{% elif file_type == "video" %}
+<video controls height="600px" width="1000px">
+    <source src="{{file_url}}" />
+</video>
+{% elif file == "audio" %}
+<div class="file-preview-container">
+    <h2 class="file-preview-heading">{{ file.name }}</h2>
+    <audio controls class="file-preview-media">
+        <source src="{{ file.file.url }}" type="audio/mpeg">
+        Your browser does not support the audio tag.
+    </audio>
+</div>
+{% elif file_type == "text" %}
+<div class="file-preview-container">
+    <h2 class="file-preview-heading">{{ file.name }}</h2>
+    <div class="file-preview-text">
+        {{ content }}
+    </div>
+    <a href="{{ file.file.url }}" class="preview-button" download>Download</a>
+</div>
+{% else %}
+    <p>Preview not available for this file type.</p>
+{% endif %}
+
+<a href="{% url 'download_file' file.id %}" class="btn btn-primary mt-3">Download File</a>
+{% endblock %}

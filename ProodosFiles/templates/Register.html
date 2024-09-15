@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - PróodosFiles</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .error {
+            color: red;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center mt-5">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header text-center">
+                        <h4>Register</h4>
+                    </div>
+                    <div class="card-body">
+                        <form id="registrationForm" method="post">
+                            {% csrf_token %}
+                            <div class="form-group">
+                                <label for="username">Username</label>
+                                <input type="text" name="username" id="username" class="form-control" minlength="4" required>
+                                <div id="usernameError" class="error"></div>
+                            </div>
+                            <div class="form-group">
+                                <label for="full_name">Full Name</label>
+                                <input type="text" name="full_name" id="full_name" class="form-control" required>
+                                <div id="fullNameError" class="error"></div>
+                            </div>
+                            <div class="form-group">
+                                <label for="email">Email</label>
+                                <input type="email" name="email" id="email" class="form-control" required>
+                                <div id="emailError" class="error"></div>
+                            </div>
+                            <div class="form-group">
+                                <label for="password">Password</label>
+                                <input type="password" name="password1" id="password1" class="form-control" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="password">Confirm Password</label>
+                                <input type="password" name="password2" id="password2" class="form-control" required>
+                                <div id="passwordError" class="error"></div>
+                            </div>
+                            <div class="form-group text-center">
+                                <button type="submit" class="btn btn-primary btn-block">Register</button>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="card-footer text-center">
+                        <p>Already have an account? <a href="{% url 'login_to' %}">Login</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+    <!-- Custom Validation Script -->
+    <script>
+        document.getElementById('registrationForm').addEventListener('submit', function(event) {
+            let valid = true;
+
+            // Validate Username (min 4 characters)
+            const username = document.getElementById('username').value;
+            if (username.length < 4) {
+                valid = false;
+                document.getElementById('usernameError').textContent = "Username must be at least 4 characters long.";
+            } else {
+                document.getElementById('usernameError').textContent = "";
+            }
+
+            // Validate Full Name (no numbers allowed)
+            const fullName = document.getElementById('full_name').value;
+            const nameRegex = /^[a-zA-Z\s]+$/;
+            if (!nameRegex.test(fullName)) {
+                valid = false;
+                document.getElementById('fullNameError').textContent = "Full name must not contain numbers or special characters.";
+            } else {
+                document.getElementById('fullNameError').textContent = "";
+            }
+            const password1 = document.getElementById('password1').value;
+            const password2 = document.getElementById('password2').value;
+            if (!(password1 == password2)) {
+                valid = false;
+                document.getElementById('passwordError').textContent = "Password must be the same";
+            } else {
+                document.getElementById('passwordError').textContent = "";
+            }
+            // Validate Email (HTML5 built-in validation)
+            const email = document.getElementById('email').value;
+            if (email === "" || !email.includes("@")) {
+                valid = false;
+                document.getElementById('emailError').textContent = "Please enter a valid email address.";
+            } else {
+                document.getElementById('emailError').textContent = "";
+            }
+
+            // Prevent form submission if validation fails
+            if (!valid) {
+                event.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>

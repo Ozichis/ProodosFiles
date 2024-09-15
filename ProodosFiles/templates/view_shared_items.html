@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load filesizetags %}
+{% load starreditemcheck %}
+
+{% block content %}
+<div class="container">
+    <h2 class="page-title">Shared with Me</h2>
+    <h2>Shared Folders</h2>
+        <ul class="list-group mb-4">
+            {% for folder in shared_folders %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>{{ folder.name }}</strong>
+                </div>
+                <div>
+                    <a href="{% url 'view_folder' folder.id %}" class="btn btn-info btn-sm">Open</a>
+                    <a href="{% url 'copy_shared_folder' folder.id %}" class="btn btn-warning btn-sm">Make A Copy</a>
+                    {% if folder|has_all_rights:request %}
+                    <a href="{% url 'share_folder' folder.id %}" class="btn btn-warning btn-sm">Share</a>
+                    {% endif %}
+                    {% if folder.owner == request.user %}
+                    <a href="{% url 'star_folder' folder.id %}" class="btn btn-secondary btn-sm">{% if folder.starred %}Unstar{% else %}Star{% endif %}</a>
+                    {% else %}
+                    <a href="{% url 'star_folder' folder.id %}" class="btn btn-secondary btn-sm">{% if folder|starred_item:request %}Unstar{% else %}Star{% endif %}</a>
+                    {% endif %}
+                    <a href="{% url 'bin_folder' folder.id %}" class="btn btn-warning btn-sm">Move To Bin</a>
+                </div>
+            </li>
+            {% empty %}
+            <li class="list-group-item text-center">No folders found.</li>
+            {% endfor %}
+        </ul>
+
+        <!-- Display Files -->
+        <h2>Files</h2>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>File Name</th>
+                    <th>Size</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in shared_files %}
+                <tr>
+                    <td>{{ file.name }}</td>
+                    <td>{{ file.size|human_readable_size }}</td>
+                    <td>
+                        <a href="{% url 'preview_file' file.id %}" class="btn btn-info btn-sm">View</a>
+                        <a href="{% url 'download_file' file.id %}" class="btn btn-success btn-sm">Download</a>
+                        {% if file|has_all_rights:request %}
+                        <a href="{% url 'share_file' file.id %}" class="btn btn-warning btn-sm">Share</a>
+                        {% endif %}
+                        <a href="{% url 'copy_shared_file' file.id %}" class="btn btn-warning btn-sm">Make A Copy</a>
+                        {% if folder.owner == request.user %}
+                        <a href="{% url 'star_file' file.id %}" class="btn btn-secondary btn-sm">{% if file.starred %}Unstar{% else %}Star{% endif %}</a>
+                        {% else %}
+                        <a href="{% url 'star_file' file.id %}" class="btn btn-secondary btn-sm">{% if request.user.starred_files.contains %}Unstar{% else %}Star{% endif %}</a>
+                        {% endif %}
+                        <a href="{% url 'bin_file' file.id %}" class="btn btn-secondary btn-sm">Move To Bin</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3" class="text-center">No files found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+</div>
+
+<style>
+    .page-title {
+        font-size: 24px;
+        margin-bottom: 20px;
+        text-align: center;
+    }
+    .shared-items-section {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 30px;
+    }
+    .shared-folders, .shared-files {
+        width: 45%;
+    }
+    .folders-grid, .files-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+    }
+    .folder-item, .file-item {
+        width: 100px;
+        text-align: center;
+    }
+    .folder-link, .file-link {
+        text-decoration: none;
+        color: #333;
+    }
+    .folder-icon img, .file-icon img {
+        width: 50px;
+        height: 50px;
+    }
+    .folder-name, .file-name {
+        margin-top: 10px;
+        font-size: 14px;
+    }
+    .file-size {
+        font-size: 12px;
+        color: #777;
+    }
+    .no-items {
+        font-size: 14px;
+        color: #888;
+        text-align: center;
+        margin-top: 20px;
+    }
+</style>
+{% endblock %}
