@@ -169,6 +169,7 @@ class ResendSerializer(serializers.Serializer):
 class ResendVerificationEmailView(views.APIView):
     serializer_class = ResendSerializer
     permission_classes = [AllowAny]
+    parser_classes = [JSONParser]
 
     def post(self, request):
         email = request.data.get('email')
@@ -231,6 +232,7 @@ class VerifyEmailSerializer(serializers.Serializer):
 class VerifyEmailView(views.APIView):
     serializer_class = VerifyEmailSerializer
     permission_classes = [AllowAny]
+    parser_classes = [JSONParser]
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
@@ -422,6 +424,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 )
 class PasswordResetRequestAPIView(APIView):
     permission_classes = [AllowAny]
+    parser_classes = [JSONParser]
 
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
@@ -458,6 +461,63 @@ class PasswordResetRequestAPIView(APIView):
         plain_message = strip_tags(message)
         send_mail(mail_subject, plain_message, "verify@codedextersacademy.com", [to_email], html_message=message)
 
+class FolderCreateSerializer(serializers.Serializer):
+    folder_name = serializers.CharField(max_length=255, required=True)
+    parent_folder_id = serializers.UUIDField(required=False)  # Optional, in case it's a nested folder
+
+    def validate_folder_name(self, value):
+        if not value:
+            raise serializers.ValidationError("Folder name cannot be empty.")
+        
+        if self.parent_folder_id:
+            try:
+                parent_f = Folder.objects.get(id=self.parent)
+                if Folder.objects.filter(name=self.folder_name, parent=parent_f).exists():
+                    raise serializers.ValidationError("Folder with that name already exists")
+            except:
+                raise serializers.ValidationError("The Parent folder does not exist")        
+
+        return value
+
+class FolderCreateAPIView(APIView):
+    serializer_class = FolderCreateSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
+
+    def post(self, request):
+        serializer = FolderCreateSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            folder_name = serializer.validated_data['folder_name']
+            parent_folder_id = serializer.validated_data.get('parent_folder_id', None)
+
+            # Get the parent folder if provided
+            if parent_folder_id:
+                parent_folder = get_object_or_404(Folder, id=parent_folder_id)
+                
+                # Check if user has permission to add subfolder in the parent folder
+                if not parent_folder.is_editor(request.user.id):
+                    if parent_folder.has_perm(request.user.id):
+                        return Response({"responseText": "You do not have permission to create subfolders here."}, status=status.HTTP_403_FORBIDDEN)
+                    return Response({"responseText": "Parent folder not found."}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                parent_folder = None  # No parent folder, it's a root-level folder
+            
+            # Create the new folder
+            new_folder = Folder.objects.create(name=folder_name, parent=parent_folder, owner=request.user)
+
+            # Handle shared folder logic (just like your initial code)
+            if parent_folder and parent_folder.owner != request.user:
+                if SharedFolder.objects.filter(shared_by=request.user, folder=parent_folder).exists():
+                    for sharing in SharedFolder.objects.filter(shared_by=request.user, folder=parent_folder):
+                        SharedFolder.objects.get_or_create(user=sharing.user, shared_by=request.user, folder=new_folder, role=sharing.role)
+                
+                SharedFolder.objects.get_or_create(user=parent_folder.owner, folder=new_folder, shared_by=request.user, role=3)
+
+            return Response({"responseText": "Folder has been created successfully."}, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 class PasswordResetSerializer(serializers.Serializer):
     password1 = serializers.CharField(write_only=True, min_length=8, required=True)
     password2 = serializers.CharField(write_only=True, min_length=8, required=True)
@@ -473,6 +533,7 @@ class PasswordResetSerializer(serializers.Serializer):
 )
 class PasswordResetAPIView(APIView):
     permission_classes = [AllowAny]
+    parser_classes = [JSONParser]
 
     def post(self, request, uidb64, token):
         serializer = PasswordResetSerializer(data=request.data)

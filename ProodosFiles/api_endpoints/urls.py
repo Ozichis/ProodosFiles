@@ -11,5 +11,6 @@ urlpatterns = [
     path('resender/', views.ResendVerificationEmailView.as_view(), name="resend_verifi"),
     path("rest-pswd/", views.PasswordResetAPIView.as_view(), name="reset_paswrd"),
     path("forgot-pass/", views.PasswordResetRequestAPIView.as_view(), name="forgot_passw"),
+    path("create-f/", views.FolderCreateAPIView.as_view(), name="create_fo"),
     # your other routes
 ]

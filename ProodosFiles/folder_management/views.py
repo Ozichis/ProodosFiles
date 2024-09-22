@@ -26,30 +26,30 @@ def apply_shared_permissions(folder):
 @login_required
 def view_folder(request, folder_id: UUID):
     folder = get_file_or_404(Folder, item_id=folder_id)
-    if folder:
-        apply_shared_permissions(folder)
-    if (folder.owner == request.user) or (SharedFolder.objects.filter(user=request.user, folder=folder).exists()) or (folder.access_list.contains(request.user)) or (folder.access_everyone == True):
-        if (folder.owner == request.user):
-            folder.access_count += 1
-        folder.save()
-        subfolders = folder.subfolders.all()
-        files = folder.subfiles.all()
-        all_folders = Folder.objects.filter(owner=request.user).all()
-        print(all_folders)
+    # if folder:
+    #     apply_shared_permissions(folder)
+    # if (folder.owner == request.user) or (SharedFolder.objects.filter(user=request.user, folder=folder).exists()) or (folder.access_list.contains(request.user)) or (folder.access_everyone == True):
+    #     if (folder.owner == request.user):
+    #         folder.access_count += 1
+    #     folder.save()
+    #     subfolders = folder.subfolders.all()
+    #     files = folder.subfiles.all()
+    #     all_folders = Folder.objects.filter(owner=request.user).all()
+    #     print(all_folders)
 
-        if request.method == 'POST':
-            folder_name = request.POST.get('folder_name')
-            new_folder = Folder.objects.create(name=folder_name, parent=folder, owner=request.user)
-            new_folder.save()
-            if folder.owner != request.user:
-                if SharedFolder.objects.filter(shared_by=request.user, folder=folder).exists():
-                    for sharing in SharedFolder.objects.filter(shared_by=request.user, folder=folder):
-                        SharedFolder.objects.get_or_create(user=sharing.user, shared_by=request.user, folder=new_folder, role=sharing.role)
-                SharedFolder.objects.get_or_create(user=folder.owner, folder=new_folder, shared_by=request.user, role=3)
-            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/'))
+    #     if request.method == 'POST':
+    #         folder_name = request.POST.get('folder_name')
+    #         new_folder = Folder.objects.create(name=folder_name, parent=folder, owner=request.user)
+    #         new_folder.save()
+    #         if folder.owner != request.user:
+    #             if SharedFolder.objects.filter(shared_by=request.user, folder=folder).exists():
+    #                 for sharing in SharedFolder.objects.filter(shared_by=request.user, folder=folder):
+    #                     SharedFolder.objects.get_or_create(user=sharing.user, shared_by=request.user, folder=new_folder, role=sharing.role)
+    #             SharedFolder.objects.get_or_create(user=folder.owner, folder=new_folder, shared_by=request.user, role=3)
+    #         return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/'))
 
-        return render(request, 'files_folders.html', {'folder': folder, 'folders': subfolders, 'files': files, 'all_folders': all_folders})
-    raise Http404('You do not have permission to view this file')
+    return render(request, 'files_folders.html ')# {'folder': folder, 'folders': subfolders, 'files': files, 'all_folders': all_folders})
+    # raise Http404('You do not have permission to view this file')
 
 def share_item_recursive(item, users, user):
     # If the item is a folder, share all subfolders and files
