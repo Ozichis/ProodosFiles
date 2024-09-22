@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 import os
 from pathlib import Path
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,12 +30,13 @@ def load_key():
     with open('mykey.key', 'r') as keyfile:
         return keyfile.read()
 
-ALLOWED_HOSTS = ['.ngrok-free.app']
+ALLOWED_HOSTS = ['.ngrok-free.app', '127.0.0.1']
 
 APPEND_SLASH = True
 # Application definition
 
 INSTALLED_APPS = [
+    'corsheaders',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -42,6 +44,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework.authtoken',
     'drf_spectacular',
     'file_management',
     'folder_management',
@@ -58,6 +61,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -65,6 +69,30 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'homepage.middleware.TrackLastThreeURLsMiddleware',
 ]
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost",
+    "https://prodos-files.vercel.app",  # Add your allowed domain(s) here
+    # "https://firm-shew-nationally.ngrok-free.app",
+]
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'ngrok-skip-browser-warning',
+    'Content-Type',  # Allow custom Content-Type
+    'Authorization',
+]
+
+CORS_ALLOW_METHODS = [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS',
+]
+
+CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'ProodosF.urls'
 
@@ -88,6 +116,13 @@ WSGI_APPLICATION = 'ProodosF.wsgi.application'
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+    'DEFAULT_PARSER_CLASSES': (
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser'
+     )
 }
 
 SPECTACULAR_SETTINGS = {
@@ -155,13 +190,13 @@ MEDIA_ROOT = BASE_DIR / 'storage'
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
-EMAIL_HOST = 'smtp-mail.outlook.com'
-EMAIL_HOST_USER = 'ebipadenice@outlook.com'
-EMAIL_HOST_PASSWORD = 'Imustwin'
+EMAIL_HOST = 'live.smtp.mailtrap.io'
+EMAIL_HOST_USER = 'api'
+EMAIL_HOST_PASSWORD = '82064210016663640e059edd4daf9e19'
 EMAIL_PORT = '587'
 EMAIL_USE_TLS = True
 
-
+PASSWORD_RESET_TIMEOUT = 3600 * 24
 
 LOGIN_URL = '/account/login/'
 LOGIN_REDIRECT_URL = '/home/'

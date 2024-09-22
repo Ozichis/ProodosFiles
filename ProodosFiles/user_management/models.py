@@ -104,7 +104,7 @@ def create_user_directory(sender, instance, created, **kwargs):
         os.makedirs(user_directory)
 
 @receiver(post_delete, sender=CustomUser)
-def delete_user_directory(sender, instance, created, **kwargs):
+def delete_user_directory(sender, instance, created=True, **kwargs):
     user_directory = os.path.join(settings.MEDIA_ROOT, str(instance.id))
     if os.path.exists(user_directory):
         shutil.rmtree(user_directory)

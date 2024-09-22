@@ -76,7 +76,7 @@
                     <h3 class="u-align-center u-text u-text-1">Activation Link</h3>
                     <p class="u-align-center u-text u-text-2">&nbsp;Hi, {{ user.username }}, You registered on our&nbsp; site, click the link below to verify your account</p>
                     <h5 class="u-align-center u-text u-text-3">
-                        <a class="u-active-none u-border-none u-btn u-button-link u-button-style u-hover-none u-none u-text-palette-1-base u-btn-1" data-href="http://{{ domain }}{% url 'activate' uidb64=uid token=token %}" href="{{url}}?token={{token}}&uidb64={{uidb64}}">http://{{ domain }}{% url 'activate' uidb64=uid token=token %} </a>
+                        <a class="u-active-none u-border-none u-btn u-button-link u-button-style u-hover-none u-none u-text-palette-1-base u-btn-1" href="{{url}}?u_info={{uid}}">{{url}}?u_info={{uid}}</a>
                     </h5>
                     <p class="u-align-center u-text u-text-4">IF YOU DIDN'T REGISTER ON OUR SITE, SIMPLY IGNORE THE MESSAGE</p>
                 </div>

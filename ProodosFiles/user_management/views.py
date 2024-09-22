@@ -43,7 +43,7 @@ def forgot_password(request):
             })
             to_email = request.POST.get('username')
             plain_message = strip_tags(message)
-            send_mail(mail_subject, plain_message, "ebipadenice@outlook.com", [to_email], html_message=message)
+            send_mail(mail_subject, plain_message, "em@codedextersacademy.com", [to_email], html_message=message)
             return JsonResponse({'success':True, "ok": True, "result": "success", "msg": "success"}, status=200)
         elif CustomUser.objects.filter(username=request.POST.get('username')).exists():
             user = CustomUser.objects.get(username=request.POST.get('username'))
@@ -57,7 +57,7 @@ def forgot_password(request):
             })
             to_email = str(user.email)
             plain_message = strip_tags(message)
-            send_mail(mail_subject, plain_message, "ebipadenice@outlook.com", [to_email], html_message=message)
+            send_mail(mail_subject, plain_message, "em@codedextersacademy.com", [to_email], html_message=message)
             return JsonResponse({'success':True, "ok": True, "result": "success", "msg": "success"}, status=200)
         print('Exists')
         return JsonResponse({'success':False, "ok": False, "result": "error", "msg": "Username or Email does not exists"}, status=302)

@@ -60,81 +60,12 @@ def is_binary_file(file_path, block_size=512):
 
 @login_required
 def upload_file(request, folder_id=None):
-    folder = get_object_or_404(Folder, id=folder_id)
-    if not (folder.is_editor(request.user.id)):
-        if folder.has_perm(request.user.id):
-            messages.error(request, "You do not have permission to upload")
-            return redirect('view_folder', folder_id)
-        raise Http404(error_note="This action cannot be performed")
-    if request.method == 'POST':
-        uploaded_files = request.FILES.getlist('files[]')
-        override = request.POST.get('override', False)
-        if override == "false":
-            override = False
-        print(override)
-        print(request.FILES)
-        for uploaded_file in uploaded_files:
-            file_instance = File(
-                name=uploaded_file.name,
-                owner=request.user,
-                parent=folder,
-                file=uploaded_file,
-                size=uploaded_file.size
-            )
-            file_instance.save(override=override)
-            if folder.owner != request.user:
-                if SharedFolder.objects.filter(folder=folder, shared_by=request.user).exists():
-                    for sharing in SharedFolder.objects.filter(folder=folder, shared_by=request.user):
-                        SharedFile.objects.get_or_create(user=sharing.user, file=file_instance, shared_by=request.user, role=sharing.role)
-                SharedFile.objects.get_or_create(user=folder.owner, file=file_instance, shared_by=request.user, role=3)
-        print("Success")
-        return JsonResponse({'success':True, "message": "Files have been uploaded successfully"})
-
-    return render(request, 'upload_files.html', {'folder': folder})
+    return render(request, 'upload_files.html', {})
 
 def notify_sharing(file, user: CustomUser):
     email = user.email
 
 
-
-@login_required
-def upload_root(request):
-
-    if request.method == 'POST':
-        uploaded_files = request.FILES.getlist('files[]')
-        override = request.POST.get('override', False)
-        if override == "false":
-            override = False
-        for uploaded_file in uploaded_files:
-            file_instance = File(
-                name=uploaded_file.name,
-                owner=request.user,
-                parent=None,
-                file=uploaded_file,
-                size=uploaded_file.size
-            )
-            try:
-                file_instance.save(override=override)
-                messages.success(request, "Files uploaded successfully")
-                return JsonResponse({'success':True})
-            except ValidationError as e:
-                messages.error(request, str(e))
-                return JsonResponse({'success': False, "message": str(e)})
-
-    return render(request, 'upload_files.html', {})
-
-@login_required
-def serve_file(request, file_id):
-    # Get the file object
-    file = get_object_or_404(File, id=file_id)
-
-    # Check if the user has permission to access the file
-    if not file.has_perm(request.user.id):
-        return HttpResponseForbidden("You do not have permission to access this file.")
-    
-    
-    url = generate_download_signed_url(file, request.user)
-    return redirect(to=url)
 
 
 @login_required
@@ -293,17 +224,6 @@ def generate_signed_url(file, user, expiry_seconds=300):
     return f"{url}?{query_params}"
 
 
-def generate_download_signed_url(file, user, expiry_seconds=300):
-    signer = TimestampSigner()
-    value = f"{file.id}:{user.id}"
-    signed_value = signer.sign(value)
-    expiry_timestamp = timedelta(seconds=expiry_seconds).total_seconds()
-    
-    # Include the expiry time in the query parameters
-    query_params = urlencode({'expiry': expiry_timestamp})
-    url = reverse('serve_download_file', args=[signed_value])
-    
-    return f"{url}?{query_params}"
 
 @login_required
 def serve_signed_file(request, signed_value):
@@ -343,38 +263,6 @@ def serve_signed_file(request, signed_value):
         else:
             return HttpResponseForbidden("You do not have permission to access this file.")
      
-    except SignatureExpired:
-        return HttpResponseForbidden("This link has expired.")
-    
-    except BadSignature:
-        return HttpResponseForbidden("Invalid URL.")
-@login_required
-def download_signed_file(request, signed_value):
-    signer = TimestampSigner()
-    try:
-        # Extract expiry time from the query parameters
-        expiry_seconds = request.GET.get('expiry')
-        
-        # Validate the signed value and ensure the link hasn't expired
-        original_value = signer.unsign(signed_value, max_age=float(expiry_seconds))
-        file_id, user_id = original_value.split(':')
-        
-        # Ensure the user is the owner or has access
-        file = get_object_or_404(File, id=file_id)
-        if file.has_perm(request.user.id):
-            encrypted_file_path = apply_correct_path(file.get_full_path())
-            with open(encrypted_file_path, 'rb') as f:
-                encrypted_content = f.read()
-            decryptor = Fernet(key=settings.FILE_ENCRYPTION_KEY)
-            decrypted_content = decryptor.decrypt(encrypted_content)
-
-            # Serve the decrypted file for download (in-memory)
-            response = FileResponse(decrypted_content, content_type='application/octet-stream')
-            response['Content-Disposition'] = f'attachment; filename="{file.name}"'
-            return response
-        else:
-            return HttpResponseForbidden("You do not have permission to access this file.")
-    
     except SignatureExpired:
         return HttpResponseForbidden("This link has expired.")
     
