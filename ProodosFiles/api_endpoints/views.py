@@ -636,6 +636,53 @@ def download_file(request):
             return redirect(to=url)
         return HttpResponseForbidden("You do not have permission to access this file.")
 
+class FileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = File
+        fields = ['id', 'name', 'size', 'created_at', 'updated_at']
+
+class FolderSerializer(serializers.ModelSerializer):
+    subfolders = serializers.SerializerMethodField()
+    files = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Folder
+        fields = ['id', 'name', 'owner', 'subfolders', 'files']
+
+    def get_subfolders(self, obj):
+        # Serializing the subfolders of the folder
+        subfolders = obj.subfolders.all()
+        return FolderSerializer(subfolders, many=True).data
+
+    def get_files(self, obj):
+        # Serializing the files within the folder
+        files = obj.subfiles.all()
+        return FileSerializer(files, many=True).data
+    
+class FolderViewSerializer(serializers.Serializer):
+    folder_id = serializers.CharField()
+
+class FolderViewAPIView(APIView):
+    serializer_class = FolderViewSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        folder_id = request.GET.get('folder_id')
+        folder = get_object_or_404(Folder, id=folder_id)
+
+        # Check if the user has permission to access the folder
+        if folder.has_perm(request.user.id):
+            
+            # Increase access count if the folder owner is the current user
+            if folder.owner == request.user:
+                folder.access_count += 1
+                folder.save()
+
+            # Serialize the folder, its subfolders, and files
+            serializer = FolderSerializer(folder)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response({"responseText": "You do not have permission to view this folder."}, status=status.HTTP_403_FORBIDDEN)
 # # Create your views here.
 # def sign_up(request):
 #     if request.method == 'POST':

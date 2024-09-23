@@ -37,6 +37,10 @@ def view_folder(request, folder_id: UUID):
     #     all_folders = Folder.objects.filter(owner=request.user).all()
     #     print(all_folders)
 
+    return render(request, 'files_folders.html ')# {'folder': folder, 'folders': subfolders, 'files': files, 'all_folders': all_folders})
+    # raise Http404('You do not have permission to view this file')
+
+
     #     if request.method == 'POST':
     #         folder_name = request.POST.get('folder_name')
     #         new_folder = Folder.objects.create(name=folder_name, parent=folder, owner=request.user)
@@ -47,9 +51,6 @@ def view_folder(request, folder_id: UUID):
     #                     SharedFolder.objects.get_or_create(user=sharing.user, shared_by=request.user, folder=new_folder, role=sharing.role)
     #             SharedFolder.objects.get_or_create(user=folder.owner, folder=new_folder, shared_by=request.user, role=3)
     #         return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/'))
-
-    return render(request, 'files_folders.html ')# {'folder': folder, 'folders': subfolders, 'files': files, 'all_folders': all_folders})
-    # raise Http404('You do not have permission to view this file')
 
 def share_item_recursive(item, users, user):
     # If the item is a folder, share all subfolders and files
