@@ -15,6 +15,8 @@ urlpatterns = [
     path("forgot-pass/", views.PasswordResetRequestAPIView.as_view(), name="forgot_passw"),
 
     path("create-f/", views.FolderCreateAPIView.as_view(), name="create_fo"),
+    path('get-folders/', views.UserFoldersAPIView.as_view(), name='user-folders'), #added
+    path('user-files/', views.UserFilesAPIView.as_view(), name='user-files'), #added
     path("view_fo/", views.FolderViewAPIView.as_view(), name="view_fo"),
     path("fo/sharing/", views.ShareFolderAPIView.as_view(), name="fold_shar"),
     path("fo/star/", views.StarFolderAPIView.as_view(), name="star_folder_api"),

@@ -488,17 +488,19 @@ class FolderCreateSerializer(serializers.Serializer):
     folder_name = serializers.CharField(max_length=255, required=True)
     parent_folder_id = serializers.UUIDField(required=False)  # Optional, in case it's a nested folder
 
+    # Made change
     def validate_folder_name(self, value):
         if not value:
             raise serializers.ValidationError("Folder name cannot be empty.")
-        
-        if self.parent_folder_id:
+
+        parent_folder_id = self.initial_data.get('parent_folder_id')  # Correct way to access the parent folder ID
+        if parent_folder_id:
             try:
                 parent_f = Folder.objects.get(id=self.parent)
-                if Folder.objects.filter(name=self.folder_name, parent=parent_f).exists():
+                if Folder.objects.filter(name=value, parent=parent_f).exists():
                     raise serializers.ValidationError("Folder with that name already exists")
-            except:
-                raise serializers.ValidationError("The Parent folder does not exist")        
+            except Folder.DoesNotExist:
+                raise serializers.ValidationError("The Parent folder does not exist")
 
         return value
 
@@ -670,6 +672,24 @@ class FileSerializer(serializers.ModelSerializer):
     class Meta:
         model = File
         fields = ['id', 'name', 'size', 'created_at', 'updated_at', 'owner', 'starred']
+class UserFileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = File
+        fields = ['id', 'name', 'owner', 'file']  # Include all required fields
+
+# Added
+class UserFilesAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Fetch all files uploaded by the authenticated user
+        user_files = File.objects.filter(owner=self.request.user)
+
+        # Serialize the files
+        serializer = UserFileSerializer(user_files, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class FolderSerializer(serializers.ModelSerializer):
 
@@ -740,6 +760,36 @@ def share_item_recursive(item, users, user):
             except:
                 pass
             file.access_list.add(users)
+
+# Add all folders for a user endpoint
+class FolderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Folder
+        fields = ['id', 'name', 'parent', 'owner', 'created_at']
+
+
+class UserFoldersAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        # Get folders owned by the user
+        user_owned_folders = Folder.objects.filter(owner=user)
+
+        # Get folders shared with the user
+        shared_folders = Folder.objects.filter(
+            id__in=SharedFolder.objects.filter(user=user).values_list('folder_id', flat=True)
+        )
+
+        # Combine both sets of folders
+        user_folders = user_owned_folders | shared_folders
+
+        # Serialize folder data
+        serializer = FolderSerializer(user_folders, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class ShareFolderAPIView(APIView):
     permission_classes = [IsAuthenticated]

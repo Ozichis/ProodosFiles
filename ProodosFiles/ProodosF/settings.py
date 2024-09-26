@@ -73,6 +73,7 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost",
+    "http://localhost:5173",
     "https://prodos-files.vercel.app",  # Add your allowed domain(s) here
     # "https://firm-shew-nationally.ngrok-free.app",
 ]
