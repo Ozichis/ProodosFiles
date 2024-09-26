@@ -1,4 +1,10 @@
-from datetime import timedelta
+import base64
+from datetime import datetime, timedelta
+import hashlib
+import os
+import re
+import shutil
+import chardet
 from django.conf import settings
 from django.urls import reverse
 from rest_framework import serializers, generics, views, status
@@ -9,7 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, JSONParser, BaseParser
 
-from django.http import FileResponse, HttpResponseForbidden, JsonResponse
+from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse
 from django.utils.http import urlencode
 from django.urls import reverse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -17,6 +23,8 @@ from django.core.validators import RegexValidator
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.backends import ModelBackend
 from cryptography.fernet import Fernet
+
+from django.core.files.storage import default_storage
 
 from file_management.models import File, SharedFile, apply_correct_path
 from folder_management.models import Folder, SharedFolder
@@ -51,14 +59,9 @@ def createBasicResponse(status=200, responseText='', data=''):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
-    url_validator = RegexValidator(
-        regex=r'^(https?://)?([a-zA-Z0-9.-]+)\.([a-zA-Z]{2,6})([/\w .-]*)*/?$',
-        message="Invalid URL format"
-    )
     
     # Add the URL field with the validator
-    url = serializers.CharField(
-        validators=[url_validator],
+    url = serializers.URLField(
         required=True
     )
     
@@ -121,6 +124,9 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
 
+    @extend_schema(
+            description="API for registering user details. URL field is required for this to work."
+    )
     def create(self, request, *args, **kwargs):
         # Call the serializer to create the user
         serializer = self.get_serializer(data=request.data)
@@ -171,6 +177,18 @@ class ResendVerificationEmailView(views.APIView):
     permission_classes = [AllowAny]
     parser_classes = [JSONParser]
 
+    @extend_schema(
+        description="Resends a verification email if former link has expired",
+        summary="",
+        responses={
+            200: OpenApiExample(
+                "Success",
+                value={
+                    "responseText": "Email sent if user exists"
+                }
+            )
+        }
+    )
     def post(self, request):
         email = request.data.get('email')
         
@@ -233,7 +251,10 @@ class VerifyEmailView(views.APIView):
     serializer_class = VerifyEmailSerializer
     permission_classes = [AllowAny]
     parser_classes = [JSONParser]
-
+    
+    @extend_schema(
+        description="API for verifying email. uidb64 and token are to be passed as payload."
+    )
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         print(request.data)
@@ -294,11 +315,12 @@ class PlainTextParser(BaseParser):
 class LoginView(APIView):
     serializer_class = LoginSerializer
     parser_classes = [PlainTextParser, JSONParser]  # Specify the serializer class
-
+    
+    @extend_schema(
+        description="API for login. Sends back a token to be saved on browser."
+    )
     def post(self, request, *args, **kwargs):
         # request['Referrer-Policy'] = 'no-referrer'
-        print("Request Content-Type:", request.headers)  # Logs content type
-        print("Request body:", request.body)
         serializer = self.serializer_class(data=eval(str(request.data)))
         print(eval(str(request.data)))
         if serializer.is_valid():
@@ -420,7 +442,8 @@ class PasswordResetRequestSerializer(serializers.Serializer):
         return value
 
 @extend_schema(
-    request=PasswordResetRequestSerializer
+    request=PasswordResetRequestSerializer,
+    description="API for sending the verification email. URL field."
 )
 class PasswordResetRequestAPIView(APIView):
     permission_classes = [AllowAny]
@@ -484,6 +507,10 @@ class FolderCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser]
 
+    @extend_schema(
+        request=FolderCreateSerializer,
+        description="API for creating folder. Folder id will be required if folder is not created in root directory. Authentication required."
+    )
     def post(self, request):
         serializer = FolderCreateSerializer(data=request.data)
         
@@ -529,7 +556,8 @@ class PasswordResetSerializer(serializers.Serializer):
 
 # Password Reset API view
 @extend_schema(
-    request=PasswordResetSerializer
+    request=PasswordResetSerializer,
+    description=""
 )
 class PasswordResetAPIView(APIView):
     permission_classes = [AllowAny]
@@ -612,7 +640,9 @@ class FileDownloadSerializer(serializers.Serializer):
 
 
 @extend_schema(
-    request=FileDownloadSerializer
+    request=FileDownloadSerializer,
+    description="API for downloading files.",
+
 )
 @api_view(['GET'])
 def download_file(request):
@@ -639,15 +669,13 @@ def download_file(request):
 class FileSerializer(serializers.ModelSerializer):
     class Meta:
         model = File
-        fields = ['id', 'name', 'size', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'size', 'created_at', 'updated_at', 'owner', 'starred']
 
 class FolderSerializer(serializers.ModelSerializer):
-    subfolders = serializers.SerializerMethodField()
-    files = serializers.SerializerMethodField()
 
     class Meta:
         model = Folder
-        fields = ['id', 'name', 'owner', 'subfolders', 'files']
+        fields = ['id', 'name', 'owner', 'created_at']
 
     def get_subfolders(self, obj):
         # Serializing the subfolders of the folder
@@ -662,9 +690,13 @@ class FolderSerializer(serializers.ModelSerializer):
 class FolderViewSerializer(serializers.Serializer):
     folder_id = serializers.CharField()
 
+@extend_schema(
+    request=FolderViewSerializer
+)
 class FolderViewAPIView(APIView):
     serializer_class = FolderViewSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
 
     def get(self, request):
         folder_id = request.GET.get('folder_id')
@@ -683,6 +715,470 @@ class FolderViewAPIView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         return Response({"responseText": "You do not have permission to view this folder."}, status=status.HTTP_403_FORBIDDEN)
+
+def share_item_recursive(item, users, user):
+    # If the item is a folder, share all subfolders and files
+    if isinstance(item, Folder):
+        for subfolder in item.subfolders.all():
+            subfolder.access_list.add(users)
+            try:
+                SharedFolder.objects.create(
+                        user=user,
+                        folder=item,
+                        shared_by=request.user
+                    )
+            except:
+                pass
+            share_item_recursive(subfolder, users, user)  # Recursively share subfolders
+        for file in item.subfiles.all():
+            try:
+                SharedFile.objects.create(
+                        user=user,
+                        folder=item,
+                        shared_by=user
+                    )
+            except:
+                pass
+            file.access_list.add(users)
+
+class ShareFolderAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        folder_id = request.POST.get('folder_id')
+        folder_instance = get_object_or_404(Folder, id=folder_id)
+
+        # Check if the user has permission to share the folder
+        if folder_instance.is_editor(request.user.id):
+            usernames = request.data.get('usernames', '')
+            share_with_everyone = request.data.get('everyone', False)
+            friend_to_share = request.data.get('friends', [])
+            role = request.data.get('userRole', 1)  # Default role is Viewer (1)
+
+            # Parse the usernames and friends list
+            usernames = [username.strip() for username in usernames.split(',') if username.strip()]
+            for friend in friend_to_share:
+                try:
+                    usernames.append(CustomUser.objects.get(username=friend).username)
+                except:
+                    pass
+            messages = []
+
+            # If not sharing with everyone
+            if not share_with_everyone:
+                if folder_instance.access_everyone:
+                    messages.append("This folder has been removed from everyone's view")
+                folder_instance.access_everyone = False
+                folder_instance.save()
+
+                # Share with specific users
+                for username in usernames:
+                    user = CustomUser.objects.filter(username=username).first()
+                    if user and user != request.user:
+                        try:
+                            shared_folder, created = SharedFolder.objects.get_or_create(
+                                user=user,
+                                folder=folder_instance,
+                                defaults={
+                                    'shared_by': request.user,
+                                    'role': role
+                                }
+                            )
+                            if not created:
+                                # Update if already shared
+                                shared_folder.shared_by = request.user
+                                shared_folder.role = role
+                                shared_folder.save()
+
+                            share_item_recursive(folder_instance, user, request.user)
+                            messages.append(f'{folder_instance.name} shared with {user.username}')
+                        except Exception as e:
+                            messages.append(f'Failed to share with {username} due to: {str(e)}')
+                    else:
+                        messages.append(f'Failed to share with {username} (invalid username or sharing with yourself).')
+            else:
+                # Share with everyone
+                folder_instance.access_everyone = True
+                folder_instance.save()
+                messages.append(f'{folder_instance.name} shared with everyone')
+
+            return Response({'status': 200, 'responseText': 'Folder shared with selection'}, status=status.HTTP_200_OK)
+
+        return Response({'status': 403, 'responseText': 'You do not have permission to share this folder'}, status=status.HTTP_403_FORBIDDEN)
+
+    def get(self, request):
+        folder_id = request.GET.get('folder_id')
+        folder_instance = get_object_or_404(Folder, id=folder_id)
+
+        # Check permissions for viewing the shared users
+        if folder_instance.is_editor(request.user.id):
+            shared_list = SharedFolder.objects.filter(shared_by=request.user, folder=folder_instance)
+            shared_with_everyone = folder_instance.access_everyone
+
+            return Response({
+                'folder_name': folder_instance.name,
+                'shared_list': [
+                    {
+                        'user': shared.user.username,
+                        'role': shared.get_role_display(),
+                    } for shared in shared_list
+                ],
+                'shared_with_everyone': shared_with_everyone,
+            }, status=status.HTTP_200_OK)
+
+        return Response({'status': 403, 'responseText': 'You do not have permission to view shared users'}, status=status.HTTP_403_FORBIDDEN)
+
+class StarFolderSerializer(serializers.Serializer):
+    folder_id = serializers.CharField()
+
+class StarFolderAPIView(APIView):
+    serializer_class = StarFolderSerializer
+    parser_classes = [JSONParser]
+
+    def post(self, request):
+        folder_id = request.POST.get('folder_id')
+        try:
+            folder = Folder.objects.get(id=request.user)
+            if request.user != folder.owner:
+                if not (folder.access_list.contains(request.user) or folder.access_everyone or SharedFolder.objects.filter(folder=folder, user=request.user).exists()):
+                    return Response({"status": 403, "responseText": "You do not have access to this item"}, status=403)
+            if folder.owner == request.user:
+                if folder.starred:
+                    folder.starred = False
+                else:
+                    folder.starred = True
+            else:
+                user = request.user
+                if user.starred_folders.contains(folder):
+                    user.starred_folders.remove(folder)
+                    user.save()
+                else:
+                    user.starred_folders.add(folder)
+                    user.save()
+            folder.save()
+            return Response({"status": 200, "responseText": "This folder has been successfully starred"}, status=200)        
+        except:
+            return Response({"status": 404, "responseText": "This folder cannot be found"}, status=404)
+
+class BinFolderSerializer(serializers.Serializer):
+    folder_id = serializers.CharField()
+
+class BinFolderAPIView(APIView):
+    serializer_class = BinFolderSerializer
+    parser_classes = [JSONParser]
+
+    def post(self, request):
+        folder_id = request.POST.get('folder_id')
+        try:
+            folder = Folder.objects.get(id=folder_id)
+            if request.user != folder.owner:
+                if not folder.has_perm(request.user.id):
+                    return  Response({"status": 403, "responseText": "You do not have permission to access this file"}, status=403)
+                folder.deny_access(request.user.id)
+            else:
+                if not folder.binned:
+                    folder.binned = datetime.now()
+                    folder.save()
+                else:
+                    if folder.parent:
+                        if not folder.parent.binned:
+                            folder.binned = None
+                            folder.save()
+                        else:
+                            folder.parent = None
+                            folder.binned = None
+                            folder.save()
+                    else:
+                        folder.binned = None
+                        folder.save()
+            return Response({"status": 200, "responseText": "This folder has been successfully binned"}, status=200)
+        except:
+            return Response({"status": 404, "responseText": "This folder was not found"})
+
+class DeletePermAPIView(APIView):
+    serializer_class = StarFolderSerializer
+    parser_classes = [JSONParser]
+
+    def post(self, request):
+        folder_id = request.POST.get('folder_id')
+        try:
+            folder = Folder.objects.get(id=folder_id)
+            if folder.owner == request.user:
+                folder.delete()
+                return Response({"status": 200, "responseText": "This folder has been successfully deleted"}, status=200)
+            elif folder.has_perm(request.user.id):
+                folder.deny_access(request.user.id)
+                return Response({"status": 200, "responseText": "You have deniec your access to this folder"})
+            else:
+                return Response({"status": 403, "responseText": "You do not have access to this folder"}, status=403)
+        except:
+            return Response({"status": 404, "responseText": "This folder was not found."}, status=404)
+        
+class CopySharedFolderAPIView(APIView):
+    serializer_class = StarFolderSerializer
+    parser_classes = [JSONParser]
+
+    def post(self, request):
+        folder_id = request.POST.get('folder_id')
+        try:
+            folder_instance =   Folder.objects.get(id=folder_id)
+            if not folder_instance.has_perm(request.user.id):
+                return Response({"status": 403, "responseText": "You do not have access to this folder"}, status=403)
+
+            folder_directory = os.path.join(settings.MEDIA_ROOT, folder_instance.get_path())
+
+            root_folder = Folder.objects.create(
+                name=folder_instance.name,
+                parent=None,
+                owner=request.user
+            )
+    
+            root_path = os.path.join(settings.MEDIA_ROOT, root_folder.get_path())
+            shutil.copytree(folder_directory, root_path, dirs_exist_ok=True)
+
+            for root, dirs, files in os.walk(folder_directory):
+                relative_path = os.path.relpath(root, folder_directory)
+                if relative_path != '.':
+                    parent_folder, created = Folder.objects.get_or_create(
+                        name=os.path.basename(root),
+                        parent=root_folder if relative_path == '.' else parent_folder,
+                        owner=request.user
+                    )
+                else:
+                    parent_folder = root_folder
+
+                # Create subfolders in the database
+                for dir_name in dirs:
+                    Folder.objects.create(
+                        name=dir_name,
+                        parent=parent_folder,
+                        owner=request.user
+                    )
+
+                # Create file entries in the database
+                for file_name in files:
+                    file_path = os.path.join(root, file_name)
+                    relative_file_path = os.path.relpath(file_path, settings.MEDIA_ROOT)
+                    file_size = os.path.getsize(file_path)  # Get the file size in bytes
+
+                    File.objects.create(
+                        name=file_name,
+                        file=relative_file_path,
+                        owner=request.user,
+                        parent=parent_folder,
+                        size=file_size  # Set the file size
+                    )
+            return Response({"status": 200, "responseText": "This folder has been copied to your drive"})
+        except Exception as e:
+            return Response({"status": 404, "responseText": "This folder does not exist."}, status=404)
+
+encryptor = Fernet(settings.FILE_ENCRYPTION_KEY)
+def is_binary_file(file_path, block_size=512):
+    """
+    Check whether a file is binary or text by reading its content.
+    Reads a portion of the file and checks if it's mostly ASCII or UTF-8.
+    """
+    with open(file_path, 'rb') as file:
+        block = file.read(block_size)
+        if b'\0' in block:
+            return True  # If there are null bytes, it is likely a binary file.
+        
+        # Try to detect the encoding of the file
+        result = chardet.detect(block)
+        encoding = result['encoding']
+        
+        if encoding is None:
+            return True  # If no encoding detected, assume binary
+        
+        # Check if encoding is UTF-8 or other text-based encoding
+        try:
+            block.decode(encoding)
+            return False  # Successfully decoded, so it's a text file
+        except (UnicodeDecodeError, LookupError):
+            return True 
+def get_image_extension(image_data):
+    from PIL import Image
+    import io
+    image = Image.open(io.BytesIO(image_data))
+    return image.format.lower()
+def decrypt_chunks(file_instance):
+    cipher_suite = Fernet(settings.FILE_ENCRYPTION_KEY)
+    with open(file_instance.file.path, 'rb') as encrypted_file:
+        while True:
+            chunk = encrypted_file.read(8192)  # Read file in chunks
+            if not chunk:
+                break
+            yield cipher_suite.decrypt(chunk)
+
+def convert_image(image_data, file_id):
+    from PIL import Image
+    import io
+    # Create a hash of the image data
+    image_hash = hashlib.md5(image_data).hexdigest()
+
+    image_extension = get_image_extension(image_data)
+    image_name = f'{image_hash}.{image_extension}'
+    # Set the image path using the hash
+    image_path = apply_correct_path(os.path.join('secure_doc_media', f'{image_hash}.{image_extension}'))
+
+    # Check if the image already exists
+    if os.path.exists(image_path):
+        return reverse('serve_img', args=[file_id, image_name])
+    
+    default_storage.save(image_path, io.BytesIO(image_data))
+
+    # Create the image if it doesn't exist
+
+    return reverse('serve_img', args=[file_id, image_name])
+
+def process_html_for_secure_images(html_content, file_id):
+    from bs4 import BeautifulSoup
+    import requests
+
+    soup = BeautifulSoup(html_content, 'html.parser')
+
+    for img_tag in soup.find_all('img'):
+        img_url = img_tag['src']
+        if img_url.startswith('data:image'):
+            header, encoded = img_url.split(",", 1)
+            image_data = base64.b64decode(encoded)
+            secure_image_url = convert_image(image_data, file_id)
+            img_tag['src'] = secure_image_url
+        else:
+            response = requests.get(img_url)
+            if response.status_code == 200:
+                image_data = response.content
+                secure_image_url = convert_image(image_data, file_id)
+                img_tag['src'] = secure_image_url
+
+    return str(soup)
+
+@login_required
+def serve_secure_doc_image(request, image_name, file_id):
+    # Get the file object
+    file = get_object_or_404(File, id=file_id)
+    # Construct the image path
+    image_path = apply_correct_path(os.path.join('secure_doc_media', image_name))
+
+    # Check if the image exists
+    if not os.path.exists(image_path):
+        raise Http404("Image not found")
+
+    # Serve the image securely
+    if file.has_perm(request.user.id):
+        return FileResponse(open(image_path, 'rb'))
+    return HttpResponseForbidden("You cannot view this image")
+
+def secure_image_urls(document_html, file_id):
+    # Regex pattern to find image URLs
+    pattern = re.compile(r'<img src="([^"]+)"')
+    
+    # Replace image URLs with a secure Django view URL
+    def replace_url(match):
+        original_url = match.group(1)
+        # Generate a secure URL to serve the image
+        secure_url = reverse('serve_img', args=[file_id, original_url.split('/')[-1]])
+        return f'<img src="{secure_url}"'
+    
+    return re.sub(pattern, replace_url, document_html)
+
+def generate_signed_url(file, user, expiry_seconds=300):
+    signer = TimestampSigner()
+    value = f"{file.id}:{user.id}"
+    signed_value = signer.sign(value)
+    expiry_timestamp = timedelta(seconds=expiry_seconds).total_seconds()
+    
+    # Include the expiry time in the query parameters
+    query_params = urlencode({'expiry': expiry_timestamp})
+    url = reverse('serve_signed_file', args=[signed_value])
+    
+    return f"{url}?{query_params}"
+
+class ShareFileAPIView(APIView):
+    parser_classes = [JSONParser]
+
+    def post(self, request):
+        folder_id = request.POST.get('folder_id')
+        try:
+            file_instance = File.objects.get(id=folder_id)
+            if request.method == 'POST':
+                usernames = request.POST.get('usernames', '')
+                role = request.POST.get('userRole', '1')
+                share_with_everyone = request.POST.get('everyone', False)
+                friend_to_share = request.POST.getlist('friends')
+            
+                usernames = [username.strip() for username in usernames.split(',') if username.strip() and CustomUser.objects.filter(username=username.strip()).exists()]
+            
+                for friend in friend_to_share:
+                    try:
+                        usernames.append(CustomUser.objects.get(id=friend).username)
+                    except:
+                        pass
+                # print(usernames)
+
+                messages = []
+                if not share_with_everyone:
+                    for username in usernames:
+                        user = CustomUser.objects.filter(username=username).first()
+                        print(file_instance)
+                        file_instance.access_list.add(user)
+                        print(file_instance.access_list.all())
+                        file_instance.save()
+                        if user and user != request.user:
+                            try:
+                                SharedFile.objects.update_or_create(
+                                    user=user,
+                                    file=file_instance,
+                                    shared_by=request.user,
+                                    role=role
+                                )
+                            except:
+                                pass
+                            messages.append(f'{file_instance.name} shared with {user.username}')
+                        else:
+                            messages.append(f'Failed to share with {username} (invalid username or sharing with yourself).')
+                else:
+                    file_instance.access_everyone = True
+                    file_instance.save()
+                    messages.append(f'{file_instance.name} shared with everyone')
+
+            return JsonResponse({'status': 'success', 'messages': "File shared with selected users."})
+        except:
+            return Response({"status": 404, "responseText": "This file was not found."})
+
+class FileBaseSerializer(serializers.Serializer):
+    file_id = serializers.UUIDField()
+
+class StarFileAPIView(APIView):
+    serializer_class = FileBaseSerializer
+    parser_classes = [JSONParser]
+
+    def post(self, request):
+        file_id = request.POST.get('file_id')
+        serializer = self.serializer_class(file_id)
+        if serializer.is_valid():
+            try:
+                file = File.objects.get(id=file_id)
+                if not file.has_perm(request.user.id):
+                    return Response({"status": 403, "responseText": "Action denied"})
+                if file.owner == request.user:
+                    if file.starred:
+                        file.starred = False
+                    else:
+                        file.starred = True
+                else:
+                    user = request.user
+                    if user.starred_files.contains(file):
+                        user.starred_files.remove(file)
+                    else:
+                        user.starred_files.add(file)
+                    user.save()
+                file.save()
+                return Response({"status": 200, "responseText": "This file has been starred." if file.starred or request.user.starred_files.contains(file) else "This file has been unstarred"})
+            except:
+                return Response({"status": 404, "responseText": "This file was not found"}, status=404)
+            
+
 # # Create your views here.
 # def sign_up(request):
 #     if request.method == 'POST':

@@ -17,7 +17,6 @@ from django.contrib.auth.decorators import login_required
 from cryptography.fernet import Fernet
 
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
-from django.core.files.storage import default_storage
 from django.core.exceptions import ValidationError
 from django.contrib import messages
 from django.urls import reverse
@@ -32,31 +31,6 @@ from user_management.models import CustomUser
 from .models import FileEncryption, Folder, SharedFile
 import chardet
 
-
-encryptor = Fernet(settings.FILE_ENCRYPTION_KEY)
-def is_binary_file(file_path, block_size=512):
-    """
-    Check whether a file is binary or text by reading its content.
-    Reads a portion of the file and checks if it's mostly ASCII or UTF-8.
-    """
-    with open(file_path, 'rb') as file:
-        block = file.read(block_size)
-        if b'\0' in block:
-            return True  # If there are null bytes, it is likely a binary file.
-        
-        # Try to detect the encoding of the file
-        result = chardet.detect(block)
-        encoding = result['encoding']
-        
-        if encoding is None:
-            return True  # If no encoding detected, assume binary
-        
-        # Check if encoding is UTF-8 or other text-based encoding
-        try:
-            block.decode(encoding)
-            return False  # Successfully decoded, so it's a text file
-        except (UnicodeDecodeError, LookupError):
-            return True 
 
 @login_required
 def upload_file(request, folder_id=None):
@@ -124,107 +98,6 @@ def preview_file(request, file_id):
                 context['content'] = doc.read()
     return render(request, 'file_preview.html', context)
 
-def get_image_extension(image_data):
-    from PIL import Image
-    import io
-    image = Image.open(io.BytesIO(image_data))
-    return image.format.lower()
-
-def decrypt_chunks(file_instance):
-    cipher_suite = Fernet(settings.FILE_ENCRYPTION_KEY)
-    with open(file_instance.file.path, 'rb') as encrypted_file:
-        while True:
-            chunk = encrypted_file.read(8192)  # Read file in chunks
-            if not chunk:
-                break
-            yield cipher_suite.decrypt(chunk)
-
-def convert_image(image_data, file_id):
-    from PIL import Image
-    import io
-    # Create a hash of the image data
-    image_hash = hashlib.md5(image_data).hexdigest()
-
-    image_extension = get_image_extension(image_data)
-    image_name = f'{image_hash}.{image_extension}'
-    # Set the image path using the hash
-    image_path = apply_correct_path(os.path.join('secure_doc_media', f'{image_hash}.{image_extension}'))
-
-    # Check if the image already exists
-    if os.path.exists(image_path):
-        return reverse('serve_img', args=[file_id, image_name])
-    image_data
-    default_storage.save(image_path, io.BytesIO(image_data))
-
-    # Create the image if it doesn't exist
-
-    return reverse('serve_img', args=[file_id, image_name])
-
-def process_html_for_secure_images(html_content, file_id):
-    from bs4 import BeautifulSoup
-    import requests
-
-    soup = BeautifulSoup(html_content, 'html.parser')
-
-    for img_tag in soup.find_all('img'):
-        img_url = img_tag['src']
-        if img_url.startswith('data:image'):
-            header, encoded = img_url.split(",", 1)
-            image_data = base64.b64decode(encoded)
-            secure_image_url = convert_image(image_data, file_id)
-            img_tag['src'] = secure_image_url
-        else:
-            response = requests.get(img_url)
-            if response.status_code == 200:
-                image_data = response.content
-                secure_image_url = convert_image(image_data, file_id)
-                img_tag['src'] = secure_image_url
-
-    return str(soup)
-
-@login_required
-def serve_secure_doc_image(request, image_name, file_id):
-    # Get the file object
-    file = get_object_or_404(File, id=file_id)
-    # Construct the image path
-    image_path = apply_correct_path(os.path.join('secure_doc_media', image_name))
-
-    # Check if the image exists
-    if not os.path.exists(image_path):
-        raise Http404("Image not found")
-
-    # Serve the image securely
-    if file.has_perm(request.user.id):
-        return FileResponse(open(image_path, 'rb'))
-    return HttpResponseForbidden("You cannot view this image")
-
-def secure_image_urls(document_html, file_id):
-    # Regex pattern to find image URLs
-    pattern = re.compile(r'<img src="([^"]+)"')
-    
-    # Replace image URLs with a secure Django view URL
-    def replace_url(match):
-        original_url = match.group(1)
-        # Generate a secure URL to serve the image
-        secure_url = reverse('serve_img', args=[file_id, original_url.split('/')[-1]])
-        return f'<img src="{secure_url}"'
-    
-    return re.sub(pattern, replace_url, document_html)
-
-def generate_signed_url(file, user, expiry_seconds=300):
-    signer = TimestampSigner()
-    value = f"{file.id}:{user.id}"
-    signed_value = signer.sign(value)
-    expiry_timestamp = timedelta(seconds=expiry_seconds).total_seconds()
-    
-    # Include the expiry time in the query parameters
-    query_params = urlencode({'expiry': expiry_timestamp})
-    url = reverse('serve_signed_file', args=[signed_value])
-    
-    return f"{url}?{query_params}"
-
-
-
 @login_required
 def serve_signed_file(request, signed_value):
     signer = TimestampSigner()
@@ -269,57 +142,57 @@ def serve_signed_file(request, signed_value):
     except BadSignature:
         return HttpResponseForbidden("Invalid URL.")
 
-@login_required
-def share_file(request, file_id):
-    file_instance = get_object_or_404(File, id=file_id)
-    if file_instance.is_editor(request.user.id):
+# @login_required
+# def share_file(request, file_id):
+#     file_instance = get_object_or_404(File, id=file_id)
+#     if file_instance.is_editor(request.user.id):
         
-        if file_instance.access_everyone:
-            return render(request, 'share_item.html', {'item_type': 'file', 'item_name': file_instance.name, 'item_id': file_instance.id, 'user': request.user, 'messages': ['This file has already been shared by everyone']})
-        if request.method == 'POST':
-            usernames = request.POST.get('usernames', '')
-            role = request.POST.get('userRole', '1')
-            share_with_everyone = request.POST.get('everyone', False)
-            friend_to_share = request.POST.getlist('friends')
+#         if file_instance.access_everyone:
+#             return render(request, 'share_item.html', {'item_type': 'file', 'item_name': file_instance.name, 'item_id': file_instance.id, 'user': request.user, 'messages': ['This file has already been shared by everyone']})
+#         if request.method == 'POST':
+#             usernames = request.POST.get('usernames', '')
+#             role = request.POST.get('userRole', '1')
+#             share_with_everyone = request.POST.get('everyone', False)
+#             friend_to_share = request.POST.getlist('friends')
             
-            usernames = [username.strip() for username in usernames.split(',') if username.strip()]
+#             usernames = [username.strip() for username in usernames.split(',') if username.strip()]
             
-            for friend in friend_to_share:
-                usernames.append(CustomUser.objects.get(id=friend).username)
-            print(usernames)
+#             for friend in friend_to_share:
+#                 usernames.append(CustomUser.objects.get(id=friend).username)
+#             print(usernames)
 
-            messages = []
-            if not share_with_everyone:
-                for username in usernames:
-                    user = CustomUser.objects.filter(username=username).first()
-                    print(file_instance)
-                    file_instance.access_list.add(user)
-                    print(file_instance.access_list.all())
-                    file_instance.save()
-                    if user and user != request.user:
-                        try:
-                            SharedFile.objects.update_or_create(
-                                user=user,
-                                file=file_instance,
-                                shared_by=request.user,
-                                role=role
-                            )
-                        except:
-                            pass
-                        messages.append(f'{file_instance.name} shared with {user.username}')
-                    else:
-                        messages.append(f'Failed to share with {username} (invalid username or sharing with yourself).')
-            else:
-                file_instance.access_everyone = True
-                file_instance.save()
-                messages.append(f'{file_instance.name} shared with everyone')
+#             messages = []
+#             if not share_with_everyone:
+#                 for username in usernames:
+#                     user = CustomUser.objects.filter(username=username).first()
+#                     print(file_instance)
+#                     file_instance.access_list.add(user)
+#                     print(file_instance.access_list.all())
+#                     file_instance.save()
+#                     if user and user != request.user:
+#                         try:
+#                             SharedFile.objects.update_or_create(
+#                                 user=user,
+#                                 file=file_instance,
+#                                 shared_by=request.user,
+#                                 role=role
+#                             )
+#                         except:
+#                             pass
+#                         messages.append(f'{file_instance.name} shared with {user.username}')
+#                     else:
+#                         messages.append(f'Failed to share with {username} (invalid username or sharing with yourself).')
+#             else:
+#                 file_instance.access_everyone = True
+#                 file_instance.save()
+#                 messages.append(f'{file_instance.name} shared with everyone')
 
-            return JsonResponse({'status': 'success', 'messages': messages})
+#             return JsonResponse({'status': 'success', 'messages': messages})
         
-        shared_list = SharedFile.objects.filter(shared_by=request.user, file=file_instance)
-        shared_with_all = file_instance.access_everyone
-        return render(request, 'share_item.html', {'item_type': 'file', 'item_name': file_instance.name, 'item_id': file_instance.id, 'user': request.user, 'sharing_list': shared_list, "access_to_all": shared_with_all, 'item': file_instance})
-    return HttpResponseForbidden('You do not have permission to share this file')
+#         shared_list = SharedFile.objects.filter(shared_by=request.user, file=file_instance)
+#         shared_with_all = file_instance.access_everyone
+#         return render(request, 'share_item.html', {'item_type': 'file', 'item_name': file_instance.name, 'item_id': file_instance.id, 'user': request.user, 'sharing_list': shared_list, "access_to_all": shared_with_all, 'item': file_instance})
+#     return HttpResponseForbidden('You do not have permission to share this file')
 
 @login_required
 def star(request, file_id):
