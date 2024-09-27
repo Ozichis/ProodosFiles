@@ -646,32 +646,69 @@ class FileDownloadSerializer(serializers.Serializer):
     description="API for downloading files.",
 
 )
+
 @api_view(['GET'])
 def download_file(request):
     file_id = request.GET.get('file_id')
+    
+    # Ensure file_id is provided
     if not file_id:
-        return Response({"status": 403, "responseText": "File id is required"})
+        return Response({"status": 403, "responseText": "File id is required"}, status=403)
+    
+    # Fetch the file object, or return 404 if it doesn't exist
     file = get_object_or_404(File, id=file_id)
+    
+    # Check if the user is authenticated
     if request.user.is_authenticated:
-        # Get the file object
-
-        # Check if the user has permission to access the file
+        
+        # Check if the user has permission to download the file
         if not file.has_perm(request.user.id):
             return HttpResponseForbidden("You do not have permission to access this file.")
         
+        # Generate the signed URL for the file
+        download_url = generate_download_signed_url(file, request.user)
         
-        url = generate_download_signed_url(file, request.user)
-        return redirect(to=url)
+        # Return the signed URL in the response
+        return Response({"status": 200, "download_url": download_url}, status=200)
+    
     else:
+        # Handle public access to files (if allowed)
         if file.access_everyone:
-            url = generate_download_signed_url(file, request.user)
-            return redirect(to=url)
+            # Generate the signed URL for public access
+            download_url = generate_download_signed_url(file, request.user)
+            
+            # Return the signed URL in the response
+            return Response({"status": 200, "download_url": download_url}, status=200)
+        
+        # If the user isn't allowed access and the file isn't public
         return HttpResponseForbidden("You do not have permission to access this file.")
+    
+# @api_view(['GET'])
+# def download_file(request):
+#     file_id = request.GET.get('file_id')
+#     if not file_id:
+#         return Response({"status": 403, "responseText": "File id is required"})
+#     file = get_object_or_404(File, id=file_id)
+#     if request.user.is_authenticated:
+#         # Get the file object
+
+#         # Check if the user has permission to access the file
+#         if not file.has_perm(request.user.id):
+#             return HttpResponseForbidden("You do not have permission to access this file.")
+        
+        
+#         url = generate_download_signed_url(file, request.user)
+#         return redirect(to=url)
+#     else:
+#         if file.access_everyone:
+#             url = generate_download_signed_url(file, request.user)
+#             return redirect(to=url)
+#         return HttpResponseForbidden("You do not have permission to access this file.")
 
 class FileSerializer(serializers.ModelSerializer):
     class Meta:
         model = File
-        fields = ['id', 'name', 'size', 'created_at', 'updated_at', 'owner', 'starred']
+        fields = ['id', 'name', 'size', 'owner', 'starred']
 class UserFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = File
@@ -692,10 +729,12 @@ class UserFilesAPIView(APIView):
 
 
 class FolderSerializer(serializers.ModelSerializer):
+    subfolders = serializers.SerializerMethodField()
+    files = serializers.SerializerMethodField()
 
     class Meta:
         model = Folder
-        fields = ['id', 'name', 'owner', 'created_at']
+        fields = ['id', 'name', 'owner', 'created_at', 'subfolders', 'files']
 
     def get_subfolders(self, obj):
         # Serializing the subfolders of the folder
@@ -723,12 +762,12 @@ class FolderViewAPIView(APIView):
         folder = get_object_or_404(Folder, id=folder_id)
 
         # Check if the user has permission to access the folder
-        if folder.has_perm(request.user.id):
+        # if folder.has_perm(request.user.id):
             
             # Increase access count if the folder owner is the current user
-            if folder.owner == request.user:
-                folder.access_count += 1
-                folder.save()
+        if folder.owner == request.user:
+            folder.access_count += 1
+            folder.save()
 
             # Serialize the folder, its subfolders, and files
             serializer = FolderSerializer(folder)
@@ -762,10 +801,10 @@ def share_item_recursive(item, users, user):
             file.access_list.add(users)
 
 # Add all folders for a user endpoint
-class FolderSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Folder
-        fields = ['id', 'name', 'parent', 'owner', 'created_at']
+# class FolderSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Folder
+#         fields = ['id', 'name', 'parent', 'owner', 'created_at']
 
 
 class UserFoldersAPIView(APIView):

@@ -103,12 +103,12 @@ class Folder(models.Model):
 
         # Finally, delete the folder from the database
         super().delete(*args, **kwargs)
-    
-    def has_perm(self, user_id):
-        user = get_object_or_404(CustomUser, id=user_id)
-        if self.access_everyone or self.access_list.contains(user) or SharedFolder.objects.filter(user=user, folder=self).exists():
-            return True
-        return False
+
+    # def has_perm(self, user_id):
+    #     user = get_object_or_404(CustomUser, id=user_id)
+    #     if self.access_everyone or self.access_list.contains(user) or SharedFolder.objects.filter(user=user, folder=self).exists():
+    #         return True
+    #     return False
     
     def is_editor(self, user_id):
         user = get_object_or_404(CustomUser, id=user_id)
